@@ -29,8 +29,8 @@ export const SettingsPage: React.FC = () => {
       // Dynamically resolve working model (supports gemini-1.5-flash, gemini-2.0-flash, gemini-pro, etc.)
       const workingModel = await AiService.findWorkingGeminiModel(keyToTest);
       
-      const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/${workingModel}:generateContent?key=${keyToTest}`;
-      const res = await fetch(testUrl, {
+      let finalModel = workingModel;
+      let res = await fetch(testUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -40,7 +40,25 @@ export const SettingsPage: React.FC = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `HTTP ${res.status}`);
+        const errMsg = err?.error?.message || `HTTP ${res.status}`;
+        
+        // Auto-detect if Google suggested a newer model
+        const modelMatch = errMsg.match(/use models\/([a-zA-Z0-9.-]+)/i);
+        if (modelMatch && modelMatch[1]) {
+          finalModel = modelMatch[1];
+          const retryUrl = `https://generativelanguage.googleapis.com/v1beta/models/${finalModel}:generateContent?key=${keyToTest}`;
+          res = await fetch(retryUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: 'Respond with "VERIFIED"' }] }]
+            })
+          });
+        }
+
+        if (!res.ok) {
+          throw new Error(errMsg);
+        }
       }
 
       // If user typed a new key that worked, auto-save it and clear input from DOM
@@ -53,7 +71,7 @@ export const SettingsPage: React.FC = () => {
       setTestStatus({
         loading: false,
         success: true,
-        message: `Google API key verified successfully! Active model connected: "${workingModel}".`
+        message: `Google API key verified successfully! Active model connected: "${finalModel}".`
       });
     } catch (err: any) {
       setTestStatus({

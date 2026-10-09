@@ -14,7 +14,7 @@ const PROMPT_CHIPS = [
 ];
 
 export const AssistantPage: React.FC<{ setCurrentTab: (t: string) => void }> = ({ setCurrentTab }) => {
-  const { settings, profile, plants } = useGarden();
+  const { settings, profile, plants, weather } = useGarden();
 
   const [messages, setMessages] = useState<AiChatMessage[]>([
     {
@@ -50,7 +50,10 @@ export const AssistantPage: React.FC<{ setCurrentTab: (t: string) => void }> = (
     setIsLoading(true);
 
     try {
-      const gardenSummary = `User garden: ${plants.length} crops (${plants.map(p => p.name).join(', ')}). City: ${settings.selectedCity}. Space: ${profile.gardenType}.`;
+      const weatherText = weather 
+        ? `Live Weather in ${settings.selectedCity}: ${weather.temperatureC}°C, ${weather.weatherDescription}, Humidity: ${weather.humidity}%, 24h Rain: ${weather.forecastRainNext24hMm.toFixed(1)}mm.` 
+        : `Location: ${settings.selectedCity}, ${settings.selectedCountry}.`;
+      const gardenSummary = `User garden: ${plants.length} crops (${plants.map(p => p.name).join(', ')}). Location: ${settings.selectedCity}, ${settings.selectedCountry}. Setup: ${profile.gardenType}. Sunlight: ${profile.sunlight.replace('_', ' ')}. Experience: ${profile.experience}. ${weatherText}`;
       
       const response = await AiService.askAssistant(
         trimmed,

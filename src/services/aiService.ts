@@ -62,8 +62,11 @@ export class AiService {
     if (this.cachedWorkingModel) return this.cachedWorkingModel;
 
     const candidates = [
-      'gemini-1.5-flash',
+      'gemini-3.8-flash',
+      'gemini-3.8-flash-latest',
+      'gemini-2.5-flash',
       'gemini-2.0-flash',
+      'gemini-1.5-flash',
       'gemini-1.5-flash-latest',
       'gemini-1.5-flash-8b',
       'gemini-1.5-pro',
@@ -121,8 +124,8 @@ export class AiService {
     }
 
     // Default fallback
-    this.cachedWorkingModel = 'gemini-1.5-flash';
-    return 'gemini-1.5-flash';
+    this.cachedWorkingModel = 'gemini-3.8-flash';
+    return 'gemini-3.8-flash';
   }
 
   /**
@@ -134,13 +137,14 @@ export class AiService {
     apiKey: string,
     gardenContext?: string
   ): Promise<{ text: string; structuredPlan?: RecommendedPlantPlan }> {
-    const model = await this.findWorkingGeminiModel(apiKey);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    let model = await this.findWorkingGeminiModel(apiKey);
+    let url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const systemInstruction = `You are GrowMate AI, an open-source expert gardening companion designed for Hacktoberfest 'Touch Grass'.
 Your mission is to help people grow organic plants, vegetables, herbs, and flowers according to their local climate, space, and experience level.
 Get users away from their screens and actively hands-on in the garden with dirt, seeds, and sunshine.
-Context about user's current garden: ${gardenContext || 'Urban balcony/pot garden'}.
+Context about user's current location, weather, and garden: ${gardenContext || 'Urban garden'}.
+Always consider the user's specific location and current weather conditions (temperature, humidity, rainfall) in your answers, watering advice, and planting suggestions.
 Always provide practical, nature-friendly, organic gardening advice. Keep answers inspiring, concise, and structured with bullet points.
 If the user asks for a planting recommendation or complete plant guide, provide helpful advice and, if appropriate, embed a JSON code block in the format:
 \`\`\`json
@@ -173,7 +177,7 @@ If the user asks for a planting recommendation or complete plant guide, provide 
       }
     };
 
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -181,7 +185,24 @@ If the user asks for a planting recommendation or complete plant guide, provide 
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData?.error?.message || `HTTP ${res.status}`);
+      const errMsg = errData?.error?.message || `HTTP ${res.status}`;
+
+      // Check if Google suggested a specific model in the error message (e.g. "update your code to use models/gemini-3.8-flash")
+      const suggestedModelMatch = errMsg.match(/use models\/([a-zA-Z0-9.-]+)/i);
+      if (suggestedModelMatch && suggestedModelMatch[1]) {
+        const retryModel = suggestedModelMatch[1];
+        this.cachedWorkingModel = retryModel;
+        const retryUrl = `https://generativelanguage.googleapis.com/v1beta/models/${retryModel}:generateContent?key=${apiKey}`;
+        res = await fetch(retryUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+      }
+      
+      if (!res.ok) {
+        throw new Error(errMsg);
+      }
     }
 
     const data = await res.json();

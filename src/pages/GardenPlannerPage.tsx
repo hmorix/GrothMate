@@ -8,7 +8,7 @@ import { GardenSpaceType, SunlightExposure, ExperienceLevel, RecommendedPlantPla
 import { Compass, Sparkles, ShieldCheck, Sun, Layers, Award, CheckCircle } from 'lucide-react';
 
 export const GardenPlannerPage: React.FC = () => {
-  const { settings, profile, updateSettings, updateProfile, addPlant, plants } = useGarden();
+  const { settings, profile, updateSettings, updateProfile, addPlant, plants, weather } = useGarden();
 
   const [spaceType, setSpaceType] = useState<GardenSpaceType>(profile.gardenType || 'balcony');
   const [sunlight, setSunlight] = useState<SunlightExposure>(profile.sunlight || 'full_sun');
@@ -38,13 +38,35 @@ export const GardenPlannerPage: React.FC = () => {
     e.preventDefault();
     setIsGeneratingAi(true);
 
-    const prompt = `Please generate 2 personalized, beginner-friendly plant recommendations specifically for:
-Location: ${settings.selectedCity}, ${settings.selectedCountry}
-Garden setup: ${spaceType}
-Sunlight: ${sunlight.replace('_', ' ')}
-Experience level: ${experience}
-Special user interest: ${customAiQuery || 'Easy kitchen herbs or high-yield crops'}.
-Respond with actionable agronomic advice and embed a JSON block with recommended crops.`;
+    const weatherDesc = weather 
+      ? `Live weather in ${settings.selectedCity}: ${weather.temperatureC}°C, ${weather.weatherDescription}, Humidity: ${weather.humidity}%, 24h Rain forecast: ${weather.forecastRainNext24hMm.toFixed(1)}mm.`
+      : `Location: ${settings.selectedCity}, ${settings.selectedCountry}.`;
+
+    const prompt = `You are a certified master permaculturist and botanist.
+Generate a personalized, highly beneficial Companion Planting Plan tailored specifically for:
+- City/Location: ${settings.selectedCity}, ${settings.selectedCountry} (Coords: ${settings.latitude.toFixed(2)}, ${settings.longitude.toFixed(2)})
+- Current Live Weather & Climate: ${weatherDesc}
+- Garden Setup: ${spaceType}
+- Sunlight Exposure: ${sunlight.replace('_', ' ')}
+- Experience Level: ${experience}
+- User Goal / Interest: ${customAiQuery || 'High-yield organic companion planting that deters pests and thrives together in current climate'}.
+
+Recommend 2 companion crops that support each other (e.g. nitrogen fixation, pest deterrence, root structure complement).
+Provide structured practical botanical advice and embed a valid JSON block with the plan in this format:
+\`\`\`json
+{
+  "cropName": "Primary Crop & Companion Pair",
+  "variety": "Recommended resilient varieties",
+  "plantingSeason": "Optimal season (current climate: ${weather?.temperatureC ?? 26}°C)",
+  "sunlightNeeded": "${sunlight.replace('_', ' ')}",
+  "soilNeeds": "Well-draining potting compost with perlite",
+  "spacingCm": 25,
+  "daysToHarvest": 45,
+  "difficulty": "${experience === 'beginner' ? 'easy' : 'medium'}",
+  "whyRecommended": "Explain why these 2 plants work together symbiotically in ${settings.selectedCity}'s current climate (${weather?.temperatureC ?? 26}°C, ${weather?.weatherDescription ?? 'fair'}).",
+  "wateringGuideline": "Specific watering advice adapted to current weather and rainfall."
+}
+\`\`\``;
 
     try {
       const result = await AiService.askAssistant(
@@ -56,24 +78,27 @@ Respond with actionable agronomic advice and embed a JSON block with recommended
           hfApiToken: settings.huggingFaceApiKey,
           hfModel: settings.huggingFaceModel
         },
-        `${spaceType} in ${settings.selectedCity}`
+        `${spaceType} in ${settings.selectedCity}. ${weatherDesc}`
       );
 
       if (result.structuredPlan) {
         setAiCustomPlans(prev => [result.structuredPlan!, ...prev]);
       } else {
-        // Create an AI generated plan from text if structured JSON wasn't returned
+        // Fallback plant tuned to weather & space
+        const temp = weather?.temperatureC ?? 26;
         const generated: RecommendedPlantPlan = {
-          cropName: "Lemon Thyme & Chives Companion",
-          variety: "Culinary Herb Pairing",
-          plantingSeason: "Early Spring to Mid Summer",
-          sunlightNeeded: sunlight === 'full_sun' ? '6+ hours sunshine' : 'Bright indirect light',
-          soilNeeds: "Light gritty potting mix with perlite",
-          spacingCm: 20,
-          daysToHarvest: 40,
+          cropName: temp > 28 ? "Cherry Tomato & Sweet Basil" : "Spinach & French Radish Companion",
+          variety: temp > 28 ? "Sweet 100 & Genovese Basil" : "Bloomsdale & Cherry Belle",
+          plantingSeason: `Active Season in ${settings.selectedCity} (${temp}°C)`,
+          sunlightNeeded: sunlight === 'full_sun' ? '6+ hours sunshine' : 'Partial sun / bright shade',
+          soilNeeds: "Nutrient-rich, well-draining organic potting soil",
+          spacingCm: 25,
+          daysToHarvest: 45,
           difficulty: experience === 'beginner' ? 'easy' : 'medium',
-          whyRecommended: `Tuned for ${settings.selectedCity} in ${spaceType}. Compact, low maintenance, and highly aromatic.`,
-          wateringGuideline: "Allow top 1 inch to dry between waterings. Protect from waterlogged saucers."
+          whyRecommended: `Tuned for ${settings.selectedCity}'s current weather (${temp}°C). The herbs deter pests while sharing pot root zones without competition.`,
+          wateringGuideline: weather && weather.forecastRainNext24hMm > 3 
+            ? "Rain approaching; skip manual watering and let soil absorb natural moisture." 
+            : "Water deeply in morning when top 1 inch feels dry to the touch."
         };
         setAiCustomPlans(prev => [generated, ...prev]);
       }
@@ -256,6 +281,12 @@ Respond with actionable agronomic advice and embed a JSON block with recommended
           </span>
         </div>
 
+        {weather && (
+          <div className="flex items-center gap-2 text-[11px] text-amber-900 bg-amber-100/60 p-2.5 rounded-xl border border-amber-200/60">
+            <span>🌡️ <strong>Live Climate Considered:</strong> {settings.selectedCity} at {weather.temperatureC}°C, {weather.weatherDescription}, 24h Rain: {weather.forecastRainNext24hMm.toFixed(1)}mm</span>
+          </div>
+        )}
+
         <form onSubmit={handleGenerateAiPlan} className="flex flex-col sm:flex-row gap-2 pt-1">
           <input
             type="text"
@@ -273,6 +304,27 @@ Respond with actionable agronomic advice and embed a JSON block with recommended
             <span>{isGeneratingAi ? 'Synthesizing Plan...' : 'Generate AI Plan'}</span>
           </button>
         </form>
+
+        {/* Quick Companion Chips */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-[10px] font-bold text-slate-500 uppercase">Ideas:</span>
+          {[
+            "🍅 Tomatoes & Sweet Basil",
+            "🌶️ Bell Peppers & French Marigolds",
+            "🥬 Spinach & Strawberries",
+            "🥕 Carrots & Rosemary",
+            "🥒 Cucumbers & Dill"
+          ].map((idea, idx) => (
+            <button
+              type="button"
+              key={idx}
+              onClick={() => setCustomAiQuery(idea)}
+              className="px-2.5 py-1 text-[11px] rounded-lg bg-white/80 hover:bg-white text-slate-700 border border-amber-200/80 transition-colors"
+            >
+              {idea}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Section 1: AI Generated Custom Plans (if generated) */}
