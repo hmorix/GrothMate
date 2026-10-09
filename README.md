@@ -167,3 +167,4 @@ Weather data is provided by [Open-Meteo.com](https://open-meteo.com) under CC-BY
 ---
 
 *Made with care for Hacktoberfest 2026. Step outside and Touch Grass!* 🌱
+###HMorix##
